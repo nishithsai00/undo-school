@@ -131,7 +131,7 @@ public class TeacherService {
          throw new InvalidCodeException("invalid code reference : "+code);
      }
      String userTimezone=dbUser.getTimeZone();
-     List<Sessions> sessionsList=sessionRepo.findByTeacherIdOrderByStartTimeAsc(id);
+     List<Sessions> sessionsList=sessionRepo.findByTeacherId_userIdOrderByStartTimeAsc(id);
      List<SessionResponseDto> dto=new ArrayList<>();
             for(Sessions s:sessionsList){
                 Instant dbStartTime=s.getStartTime();

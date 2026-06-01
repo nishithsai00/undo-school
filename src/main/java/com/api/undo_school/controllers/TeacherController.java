@@ -46,7 +46,7 @@ public class TeacherController {
         user.setTimeZone(timeZone);
         int userid= service.register(user);
 
-        return new ResponseEntity<>("Teacher Profile created with userId : "+userid +"and unique code was : "+passcode,HttpStatus.CREATED);
+        return new ResponseEntity<>("Teacher Profile created with userId : "+userid +"  and unique code was : "+passcode,HttpStatus.CREATED);
     }
     @PostMapping("/{id}/{code}/addcourse")
     public ResponseEntity<String> addCourse(@RequestBody Course course, @PathVariable int id,@PathVariable String code){
