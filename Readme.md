@@ -1,385 +1,288 @@
-# UndoSchool — Global Class Offering Booking System
+# Global Class Offering Booking System
 
-A production-ready backend service for a global live-learning platform where teachers create class offerings and parents/students book them across different timezones.
+A production-ready backend service for a global live-learning platform where teachers conduct online classes for students across different countries and timezones.
 
----
+**Live API:** [https://undo-school-l2uj.onrender.com](https://undo-school-l2uj.onrender.com)
 
-## Project Overview
-
-This service handles the full lifecycle of online class bookings:
-
-- Teachers register, create courses, define offerings (batches), and schedule individual sessions
-- Parents register with their local timezone, browse available offerings, and book them
-- All session times are stored in UTC and converted to each user's local timezone on the fly
-- Booking conflict detection prevents parents from double-booking overlapping sessions
-- Concurrent booking attempts are handled using pessimistic locking at the database level
+**Swagger UI:** [https://undo-school-l2uj.onrender.com/swagger-ui/index.html](https://undo-school-l2uj.onrender.com/swagger-ui/index.html)
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Language | Java 21 |
-| Framework | Spring Boot 3.x |
-| Database | MySQL |
-| ORM | Spring Data JPA / Hibernate |
-| Build | Maven |
-| Timezone handling | `java.time` (Instant + ZonedDateTime) |
+- **Java 21** + **Spring Boot 4.0.6**
+- **PostgreSQL** — primary database
+- **Spring Data JPA** + **Hibernate** — ORM
+- **Springdoc OpenAPI (Swagger)** — API documentation
+- **Docker** — containerization
+- **GitHub Actions** — CI pipeline
+- **Render** — CD and deployment
 
 ---
 
-## Setup Instructions
+## Core Concepts
 
-### Prerequisites
+The system models three layers:
 
-- Java 21+
-- Maven 3.8+
-- MySQL 8.0+
+**Course** → a subject like Python Coding or Art Drawing
 
-### 1. Clone the Repository
+**Offering** → a schedulable batch of that course (e.g. Saturday Batch, Summer Camp). Each offering has a teacher, a start date, and an end date.
 
-```bash
-git clone https://github.com/<your-username>/undo-school.git
-cd undo-school
-```
+**Session** → an individual class meeting within an offering (e.g. June 7, 7:30 PM – 9:00 PM)
 
-### 2. Create the Database
-
-```sql
-CREATE DATABASE undo_school;
-```
-
-### 3. Configure Environment Variables
-
-Copy the example env file and fill in your values:
-
-```bash
-cp .env.example .env
-```
-
-Or set the following variables in your environment (see full list below).
-
-### 4. Run the Application
-
-```bash
-./mvnw spring:boot:run
-```
-
-The server starts on `http://localhost:8080` by default.
+Parents book at the offering level — booking one offering books all its sessions together.
 
 ---
 
-## Environment Variables
+## Key Engineering Decisions
 
-| Variable | Description | Example |
-|---|---|---|
-| `DB_HOST` | MySQL host | `localhost` |
-| `DB_PORT` | MySQL port | `3306` |
-| `DB_NAME` | Database name | `undo_school` |
-| `DB_USERNAME` | MySQL username | `root` |
-| `DB_PASSWORD` | MySQL password | `secret` |
-| `SERVER_PORT` | (Optional) App port | `8080` |
+### Timezone Handling
 
-### `application.properties` template
+All session times are stored in UTC as `Instant` in the database. Teachers create sessions in their local timezone — the backend converts to UTC before storing. When parents view sessions, UTC is converted to their local timezone for display.
 
-```properties
-spring.datasource.url=jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:undo_school}
-spring.datasource.username=${DB_USERNAME}
-spring.datasource.password=${DB_PASSWORD}
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=false
-server.port=${SERVER_PORT:8080}
+```
+Teacher (IST) → backend converts → UTC stored in DB
+                                          ↓
+Parent (EST)  ← backend converts ← UTC read from DB
 ```
 
+No timezone data is lost. One universal source of truth.
+
+### Concurrent Booking Prevention
+
+Booking conflict detection happens at the **database level**, not in application memory. A JPQL query checks for overlapping session times across the parent's existing confirmed bookings in a single atomic operation.
+
+To prevent race conditions where two simultaneous booking requests both pass the conflict check before either commits, the system uses **pessimistic locking** (`PESSIMISTIC_WRITE`) on the parent's user row. This locks the row for the duration of the transaction, forcing concurrent requests to queue instead of running in parallel.
+
+### Conflict Detection Logic
+
+Two sessions overlap when:
+```
+newSession.startTime < existingSession.endTime
+AND
+newSession.endTime > existingSession.startTime
+```
+
+This check runs at DB level for both teacher scheduling (preventing a teacher from double-booking themselves) and parent booking (preventing a parent from booking overlapping offerings).
+
 ---
 
-## API Documentation
+## Database Schema
 
-> All timestamps in request bodies must be in `LocalDateTime` format: `2025-06-07T18:00:00`
-> All timestamps in responses are returned as `ZonedDateTime` strings in the requesting user's local timezone.
+```
+users         → userId, name, email, role, passcode, timeZone
+courses       → id, name
+offerings     → offeringId, batchType, courseId, teacherId, offeringStartDate, offeringEndDate, status
+sessions      → sessionId, offeringId, teacherId, startTime, endTime
+bookings      → bookingId, parentId, offeringId, status
+```
+
+`status` is an enum: `conformed` (active) or `cancelled`
 
 ---
 
-### Helper Endpoint
+## API Reference
 
-#### `GET /timezones`
-Returns a sorted list of all valid IANA timezone identifiers (e.g. `Asia/Kolkata`, `America/New_York`).
+Full interactive documentation available at Swagger UI. Summary below.
 
----
+### Utility
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/timezones` | Returns all valid IANA timezone strings |
 
 ### Teacher APIs
 
-#### Register a Teacher
-`POST /teacher/register`
-
-**Request Body:**
-```json
-{
-  "name": "Alice",
-  "email": "alice@example.com",
-  "timeZone": "America/New_York"
-}
-```
-
-**Response:** `201 Created`
-```
-Teacher Profile created with userId: 1 and unique code was: 1234
-```
-> Save the `userId` and `code` — they are required for all subsequent teacher operations.
-
----
-
-#### Create a Course
-`POST /{id}/{code}/addcourse`
-
-**Request Body:**
-```json
-{
-  "courseName": "Python Coding",
-  "teacherName": "Alice"
-}
-```
-
-**Response:** `201 Created`
-```
-course added done with reference id: 1
-```
-
----
-
-#### Create an Offering
-`POST /{id}/{code}/addoffering`
-
-**Request Body:**
-```json
-{
-  "batchType": "Saturday Batch",
-  "courseId": 1,
-  "startDate": "2025-06-07T18:00:00",
-  "endDate": "2025-07-26T19:00:00"
-}
-```
-> Dates are interpreted in the teacher's registered timezone.
-
-**Response:** `201 Created`
-```
-Offering added done with ref id: 1
-```
-
----
-
-#### Add a Session to an Offering
-`POST /{id}/{code}/session`
-
-**Request Body:**
-```json
-{
-  "offering": 1,
-  "startTime": "2025-06-07T18:00:00",
-  "endTime": "2025-06-07T19:00:00"
-}
-```
-> Times are interpreted in the teacher's registered timezone. Overlapping sessions for the same teacher are rejected.
-
-**Response:** `201 Created`
-```
-session added done with ref number: 1
-```
-
----
-
-#### Get All Sessions
-`GET /{id}/{code}/session`
-
-Returns all sessions for the teacher, sorted ascending by start time, in the teacher's local timezone.
-
----
-
-#### Get Upcoming Sessions
-`GET /{id}/{code}/upsessions`
-
-Returns only future sessions for the teacher, excluding cancelled offerings.
-
----
-
-#### Cancel an Offering
-`PUT /{id}/{code}/session`
-
-**Request Body:** (plain integer)
-```
-1
-```
-> Cancels the offering with the given ID. All associated sessions become inactive.
-
-**Response:** `200 OK`
-
----
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/teacher/register` | Register as a teacher. Returns userId and passcode |
+| POST | `/{id}/{code}/addcourse` | Create a new course |
+| POST | `/{id}/{code}/addoffering` | Create an offering under a course |
+| POST | `/{id}/{code}/session` | Add a session to an offering |
+| GET | `/{id}/{code}/session` | Get all sessions (converted to teacher's timezone) |
+| GET | `/{id}/{code}/upsessions` | Get upcoming sessions only (excludes cancelled offerings) |
+| PUT | `/{id}/{code}/offering` | Cancel an offering |
 
 ### Parent APIs
 
-#### Register a Parent
-`POST /register`
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/register` | Register as a parent |
+| GET | `/{id}/offerings` | View available offerings (shown in parent's timezone) |
+| POST | `/{id}/booking` | Book an offering (all sessions booked together) |
+| GET | `/{id}/booking` | View all bookings |
+| PUT | `/{id}/booking` | Cancel a booking |
 
-**Request Body:**
-```json
+---
+
+## Authentication
+
+This API uses a simple passcode-based identity system. When a teacher registers, a unique passcode is generated and returned. Teachers pass `{userId}` and `{passcode}` as path variables on every protected endpoint.
+
+Parents are identified by `{userId}` only (no passcode required for parent endpoints).
+
+---
+
+## Sample Request Flow
+
+**1. Register as teacher (auto-detects timezone from X-Timezone header)**
+```
+POST /teacher/register
+X-Timezone: Asia/Kolkata
+
 {
-  "name": "Bob",
-  "email": "bob@example.com",
-  "timeZone": "Asia/Kolkata"
+  "name": "Ravi Kumar",
+  "email": "ravi@example.com"
+}
+
+Response: "Teacher Profile created with userId: 1 and unique code was: 1423"
+```
+
+**2. Add a course**
+```
+POST /1/1423/addcourse
+
+{ "name": "Python Coding" }
+```
+
+**3. Add an offering**
+```
+POST /1/1423/addoffering
+
+{
+  "batchType": "Saturday Batch",
+  "courseId": 1,
+  "startTime": "2026-06-07T19:30:00",
+  "endTime": "2026-09-27T21:00:00"
 }
 ```
-> `timeZone` can also be passed via the `X-Timezone` header if omitted from the body. Defaults to `UTC` if neither is provided.
 
-**Response:** `201 Created`
+**4. Add sessions to the offering**
+```
+POST /1/1423/session
 
----
-
-#### Browse Available Offerings
-`GET /{id}/offerings`
-
-Returns all upcoming confirmed offerings, with dates converted to the parent's registered timezone.
-
-**Response:**
-```json
-[
-  {
-    "offeringId": 1,
-    "batchType": "Saturday Batch",
-    "courseId": 1,
-    "startDate": "2025-06-07T23:30:00+05:30[Asia/Kolkata]",
-    "endDate": "2025-07-27T00:30:00+05:30[Asia/Kolkata]"
-  }
-]
+{
+  "offeringId": 1,
+  "startTime": "2026-06-07T19:30:00",
+  "endTime": "2026-06-07T21:00:00"
+}
 ```
 
----
-
-#### Book an Offering
-`POST /{id}/booking`
-
-**Request Body:** (plain integer — the offering ID)
+**5. Parent registers from USA**
 ```
+POST /register
+X-Timezone: America/New_York
+
+{
+  "name": "John Smith",
+  "email": "john@example.com"
+}
+```
+
+**6. Parent views offerings (sessions shown in EST)**
+```
+GET /2/offerings
+```
+
+**7. Parent books an offering**
+```
+POST /2/booking
+
 1
 ```
 
-- Books the entire offering (all sessions)
-- Rejects if any session in this offering overlaps with a session in an already-booked offering
-- Handles concurrent booking attempts safely via pessimistic locking
-
-**Response:** `201 Created` — returns the booking ID
-
 ---
 
-#### Get My Bookings
-`GET /{id}/booking`
+## Running Locally
 
-Returns all bookings for the parent with their current status.
+**Prerequisites:** Java 21, Maven, PostgreSQL
 
----
-
-#### Cancel a Booking
-`PUT /{id}/booking`
-
-**Request Body:** (plain integer — the booking ID)
-```
-1
+**1. Clone the repository**
+```bash
+git clone https://github.com/nishithsai00/undo-school
+cd undo-school
 ```
 
-Sets the booking status to `cancelled`.
+**2. Configure database**
 
-**Response:** `200 OK`
-
----
-
-## Database Schema Overview
-
-```
-Users
-  userId (PK), name, email, role (teacher|parent), passcode, timeZone
-
-Course
-  id (PK), courseName, teacherName
-
-Offering
-  offeringId (PK), batchType, courseId (FK), teacherId (FK → Users),
-  offeringStartDate (UTC), offeringEndDate (UTC), status
-
-Sessions
-  sessionId (PK), offeringId (FK), teacherId (FK → Users),
-  startTime (UTC), endTime (UTC)
-
-Bookings
-  bookingId (PK), parentId (FK → Users), offeringId (FK), status
+Edit `src/main/resources/application.properties`:
+```properties
+spring.datasource.url=jdbc:postgresql://localhost:5432/undoschool
+spring.datasource.username=your_username
+spring.datasource.password=your_password
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.properties.hibernate.jdbc.time_zone=UTC
 ```
 
-All datetime values are stored as `DATETIME` / `TIMESTAMP` in UTC (Java `Instant`). Timezone conversion happens at the service layer using `ZoneId` and `ZonedDateTime`.
+**3. Run**
+```bash
+mvn spring-boot:run
+```
+
+API available at `http://localhost:8080`
+
+Swagger UI at `http://localhost:8080/swagger-ui/index.html`
 
 ---
 
-## Assumptions Made
-
-1. **Authentication is simplified** — teachers authenticate via a plain numeric passcode returned at registration. This is intentional for the scope of this assignment; a real system would use JWT or OAuth2.
-2. **One booking per offering per parent** — a parent booking the same offering twice is treated as a conflict at the application layer.
-3. **Timezone is set at registration** — a parent or teacher's timezone is fixed at signup and used for all display conversions. There is no per-request timezone override after registration.
-4. **Sessions are added individually** — bulk session creation is not exposed (the endpoint is commented out pending refinement).
-5. **Offering status drives visibility** — only offerings with `status = confirmed` appear in the parent's browse view.
-6. **No authentication middleware** — routes are not secured with Spring Security; the passcode in the URL path acts as a lightweight auth token for teacher endpoints.
-
----
-
-## Concurrency Handling Approach
-
-The booking flow (`POST /{id}/booking`) uses **pessimistic write locking** at the database level:
-
-1. The parent's `Users` row is fetched with `SELECT ... FOR UPDATE` (via `@Lock(PESSIMISTIC_WRITE)`) inside a `@Transactional` block.
-2. All sessions belonging to the desired offering are loaded.
-3. Each session is checked against existing confirmed bookings for that parent using a JPQL query that joins `Sessions → Offering → Bookings`.
-4. If any overlap is detected, a `BookingException` is thrown and the transaction is rolled back.
-5. If no conflict, the booking is persisted.
-
-The pessimistic lock on the user row serializes concurrent booking requests from the same parent, preventing race conditions where two simultaneous requests both pass the conflict check before either commits.
-
----
-
-## Timezone Handling Approach
-
-- **Storage:** All `startTime`, `endTime`, `offeringStartDate`, and `offeringEndDate` are stored as `java.time.Instant` (UTC epoch) in the database.
-- **Teacher input:** When a teacher provides a datetime string (e.g. `2025-06-07T18:00:00`), it is parsed as `LocalDateTime` and converted to `Instant` using the teacher's registered `ZoneId`.
-- **Parent display:** When returning sessions or offerings to a parent, the UTC `Instant` is converted to `ZonedDateTime` using the parent's registered `ZoneId`, producing a fully qualified string like `2025-06-07T23:30:00+05:30[Asia/Kolkata]`.
-- **Conflict detection:** Because all times are in UTC, overlap checks (`startTime < :endTime AND endTime > :startTime`) work correctly regardless of which timezones the teacher and parent are in.
-
----
-
-## Running Locally (Step-by-Step)
+## Running with Docker
 
 ```bash
-# 1. Start MySQL and create the database
-mysql -u root -p -e "CREATE DATABASE undo_school;"
-
-# 2. Set environment variables
-export DB_USERNAME=root
-export DB_PASSWORD=yourpassword
-export DB_HOST=localhost
-export DB_NAME=undo_school
-
-# 3. Build and run
-./mvnw clean spring-boot:run
-
-# 4. Verify the server is up
-curl http://localhost:8080/timezones
+docker build -t undo-school .
+docker run -p 8080:8080 \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host:5432/undoschool \
+  -e SPRING_DATASOURCE_USERNAME=user \
+  -e SPRING_DATASOURCE_PASSWORD=pass \
+  undo-school
 ```
-
-Hibernate will auto-create the schema on first run (`ddl-auto=update`).
 
 ---
 
-## Optional Enhancements (Roadmap)
+## CI/CD Pipeline
 
-- [ ] Docker + `docker-compose.yml` for one-command local setup
-- [ ] Swagger / OpenAPI documentation at `/swagger-ui.html`
-- [ ] JWT-based authentication replacing the passcode pattern
-- [ ] Bulk session creation endpoint
-- [ ] Unit tests for conflict detection and timezone conversion
-- [ ] Integration tests using Testcontainers + MySQL
-- [ ] CI/CD with GitHub Actions
+**CI — GitHub Actions**
+
+On every push, the pipeline:
+1. Checks out the code
+2. Sets up Java 21 (Temurin)
+3. Runs `mvn clean install -DskipTests`
+
+Pipeline config: `.github/workflows/build.yml`
+
+**CD — Render**
+
+The application is deployed on Render using the included Dockerfile. Render automatically redeploys on every push to the main branch.
+
+Live URL: [https://undo-school-l2uj.onrender.com](https://undo-school-l2uj.onrender.com)
+
+---
+
+## Error Handling
+
+All errors return a structured JSON response:
+
+```json
+{
+  "status": 409,
+  "message": "Session on 2026-06-14T17:00:00Z already exists in your previous booking",
+  "timestamp": 1748789400000
+}
+```
+
+| Exception | HTTP Status |
+|-----------|-------------|
+| Booking conflict | 409 Conflict |
+| Invalid user | 401 Unauthorized |
+| Invalid passcode | 401 Unauthorized |
+| Offering not found | 404 Not Found |
+| Invalid timezone | 404 Not Found |
+| Session overlap | 409 Conflict |
+| Empty name/email | 204 No Content |
+
+---
+
+## Author
+
+**Nishith Sai**
+GitHub: [github.com/nishithsai00](https://github.com/nishithsai00)
+LinkedIn: [linkedin.com/in/nishith-sai-62a60b378](https://linkedin.com/in/nishith-sai-62a60b378)
