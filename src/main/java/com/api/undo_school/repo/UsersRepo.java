@@ -16,6 +16,6 @@ public interface UsersRepo extends JpaRepository<Users,Integer> {
     @Query("SELECT u.passcode FROM Users u Where u.userId=:id")
      String findcode(@Param("id") int id);
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT u FROM Users u WHERE u.id = :id")
+    @Query("SELECT u FROM Users u WHERE u.userId = :id")
    Optional<Users> findByIdWithLock(@Param("id") int id);
 }

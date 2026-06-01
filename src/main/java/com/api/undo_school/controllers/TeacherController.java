@@ -79,7 +79,7 @@ public class TeacherController {
     public ResponseEntity<List<SessionResponseDto>> getUpComing(@PathVariable int id,@PathVariable String code){
         return new ResponseEntity<>(service.upComingSessions(id,code),HttpStatus.OK);
     }
-    @PutMapping("/{id}/{code}/session")
+    @PutMapping("/{id}/{code}/offering")
     public ResponseEntity<String> deleteSession(@PathVariable int id,@PathVariable String code,@RequestBody int offeringId){
         service.cancelSession(id,code,offeringId);
         return new ResponseEntity<>("offering cancellation done",HttpStatus.OK);

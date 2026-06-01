@@ -14,4 +14,16 @@ public class ErrorMessage {
         this.message=message;
 
     }
+
+    public int getHttpCode() {
+        return httpCode;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
+    }
+
+    public String getMessage() {
+        return message;
+    }
 }

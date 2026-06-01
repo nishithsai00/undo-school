@@ -102,10 +102,8 @@ public List<BookingResponseDto> getAllBookings(int id){
 }
 
     public void cancleBooking(int id, int bookingId) {
-        boolean useridAvail=userRepo.existsById(id);
-        if(!useridAvail){
-            throw new InvalidUserException("user id not fount with the id : "+id);
-        }
+       Users user=userRepo.findByIdWithLock(id).orElseThrow(()->new InvalidUserException("user id not fount with the id : "+id));
+
        Bookings booking= bookingRepo.findById(bookingId).orElseThrow(()->new BookingException("booking not found with id :" +bookingId));
         booking.setStatus(Status.cancelled);
         bookingRepo.save(booking);

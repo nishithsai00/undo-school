@@ -38,7 +38,9 @@ public class ParentController {
         }catch (DateTimeException e){
           throw  new InvalidTimezoneException("invalid Timezone :" +timeZone);
        }
+        user.setTimeZone(timeZone);
        int userid= service.register(user);
+
        return new ResponseEntity<> ("Parent Profile created with userId : "+userid,HttpStatus.CREATED);
     }
     @GetMapping("/{id}/offerings")
