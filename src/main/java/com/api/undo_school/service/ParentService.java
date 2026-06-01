@@ -86,8 +86,19 @@ public int bookAoffering(int id ,int offeringId){
         return bookingRepo.save(booking).getBookingId();
 }
 
-public List<Bookings> getAllBookings(int id){
-        return bookingRepo.findByParentId_userId(id);
+public List<BookingResponseDto> getAllBookings(int id){
+
+        List<Bookings> bookingsList=  bookingRepo.findByParentId_userId(id);
+        List<BookingResponseDto> dto=new ArrayList<>();
+        for(Bookings b:bookingsList){
+            BookingResponseDto response=new BookingResponseDto();
+            response.setBookingId(b.getBookingId());
+            response.setUserId(b.getParentId().getUserId());
+            response.setOfferingId(b.getOffering().getOfferingId());
+            response.setStatus(b.getStatus());
+            dto.add(response);
+        }
+        return dto;
 }
 
     public void cancleBooking(int id, int bookingId) {

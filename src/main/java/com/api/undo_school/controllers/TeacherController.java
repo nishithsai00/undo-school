@@ -39,11 +39,13 @@ public class TeacherController {
         }catch (DateTimeException e){
             throw  new InvalidTimezoneException("invalid Timezone :" +timeZone);
         }
-        int userid= service.register(user);
         Random random =new Random();
         int rand=1000+random.nextInt(999);
         String passcode=String.valueOf(rand);
         user.setPasscode(passcode);
+        user.setTimeZone(timeZone);
+        int userid= service.register(user);
+
         return new ResponseEntity<>("Teacher Profile created with userId : "+userid +"and unique code was : "+passcode,HttpStatus.CREATED);
     }
     @PostMapping("/{id}/{code}/addcourse")
@@ -53,21 +55,21 @@ public class TeacherController {
 
     }
     @PostMapping("/{id}/{code}/addoffering")
-    public ResponseEntity<String> addOffering(@PathVariable int id, @PathVariable String code, @RequestBody Offering offering,@RequestBody TeacherSession dto){
-        int offeringId=service.addOffering(id,code,offering,dto);
+    public ResponseEntity<String> addOffering(@PathVariable int id, @PathVariable String code, @RequestBody RequestOfferingDto offering){
+        int offeringId=service.addOffering(id,code,offering);
         return new ResponseEntity<>("Offering added done with ref id :"+offeringId, HttpStatus.CREATED);
     }
     @PostMapping("/{id}/{code}/session")
-    public ResponseEntity<String> addSession(@PathVariable int id, @PathVariable String code, @RequestBody Sessions sessions,@RequestBody TeacherSession dto){
-        int sessionId= service.addSession(sessions,dto,id,code);
+    public ResponseEntity<String> addSession(@PathVariable int id, @PathVariable String code, @RequestBody RequestSessionListDto sessions){
+        int sessionId= service.addSession(sessions,id,code);
         return new ResponseEntity<>("session added done with ref number : "+sessionId,HttpStatus.CREATED);
     }
-    @PostMapping("/{id}/{code}/listsessions")
-    public ResponseEntity<String> addListOfSessions(@PathVariable int id,@PathVariable String code ,@RequestBody List<Sessions> sessions,@RequestBody TeacherSession dto){
-
-        List<Integer> listOfSessionIdS= service.addListOfSessions(id,code,sessions,dto);
-        return new ResponseEntity<>("list of sessions added done with id's : "+listOfSessionIdS,HttpStatus.CREATED);
-    }
+//    @PostMapping("/{id}/{code}/listsessions")
+//    public ResponseEntity<String> addListOfSessions(@PathVariable int id,@PathVariable String code ,@RequestBody List<Sessions> sessions,@RequestBody TeacherSession dto){
+//
+//        List<Integer> listOfSessionIdS= service.addListOfSessions(id,code,sessions,dto);
+//        return new ResponseEntity<>("list of sessions added done with id's : "+listOfSessionIdS,HttpStatus.CREATED);
+//    }
     @GetMapping("/{id}/{code}/session")
     public ResponseEntity<List<SessionResponseDto>> listOfSessions(@PathVariable int id,@PathVariable String code){
         return new ResponseEntity<>(service.getallSessions(id,code),HttpStatus.OK);

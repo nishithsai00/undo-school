@@ -50,7 +50,7 @@ public class ParentController {
         return new ResponseEntity<>(service.bookAoffering(id,offeringId), HttpStatus.CREATED);
  }
  @GetMapping("/{id}/booking")
-    public ResponseEntity<List<Bookings>> getBookings(@PathVariable int id){
+    public ResponseEntity<List<BookingResponseDto>> getBookings(@PathVariable int id){
        return new ResponseEntity<>(service.getAllBookings(id),HttpStatus.OK);
  }
  @PutMapping("/{id}/booking")

@@ -1,15 +1,11 @@
 package com.api.undo_school.service;
 
-import com.api.undo_school.exceptions.InvalidCodeException;
-import com.api.undo_school.exceptions.InvalidOfferingIdException;
-import com.api.undo_school.exceptions.InvalidUserException;
-import com.api.undo_school.exceptions.SessionAlreadyExistsException;
+import com.api.undo_school.exceptions.*;
 import com.api.undo_school.model.*;
 import com.api.undo_school.repo.CourseRepo;
 import com.api.undo_school.repo.OfferingRepo;
 import com.api.undo_school.repo.SessionsRepo;
 import com.api.undo_school.repo.UsersRepo;
-import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -47,39 +43,46 @@ public class TeacherService {
      }
      return courseRepo.save(course).getId();
  }
- public int addOffering(int id,String code,Offering offering,TeacherSession dto){
+ public int addOffering(int id,String code,RequestOfferingDto offeringDto){
      Users user=userRepo.findById(id).orElseThrow(()->new InvalidUserException("user not found with id : "+id));
      if(!(user.getPasscode().equals(code))){
          throw new InvalidCodeException("invalid code : "+code);
      }
-
+     Course course =courseRepo.findById(offeringDto.getCourseId()).orElseThrow(()->new InvalidCourseIdException("invalid course id"+offeringDto.getCourseId()));
+     Offering offering =new Offering();
 
      String timeZone=user.getTimeZone();
-    LocalDateTime userStartDate=LocalDateTime.parse(dto.getStartTime());
-     LocalDateTime userEndDate=LocalDateTime.parse(dto.getEndTime());
+    LocalDateTime userStartDate=LocalDateTime.parse(offeringDto.getStartDate());
+     LocalDateTime userEndDate=LocalDateTime.parse(offeringDto.getEndDate());
      Instant startDate=userStartDate.atZone(ZoneId.of(timeZone)).toInstant();
      Instant endDate =userEndDate.atZone(ZoneId.of(timeZone)).toInstant();
      offering.setStatus(Status.conformed);
      offering.setOfferingStartDate(startDate);
      offering.setOfferingEndDate(endDate);
       offering.setTeacherId(user);
+      offering.setCourse(course);
+      offering.setBatchType(offeringDto.getBatchType());
    return offeringRepo.save(offering).getOfferingId();
 
  }
- public int addSession(Sessions session, TeacherSession dto,int id, String code){
+ public int addSession(RequestSessionListDto sessionDto,int id, String code){
      Users user=userRepo.findById(id).orElseThrow(()->new InvalidUserException("user not found with id : "+id));
      if(!(user.getPasscode().equals(code))){
          throw new InvalidCodeException("invalid code : "+code);
      }
-     session.setEndTime(null);
-     session.setStartTime(null);
-    LocalDateTime teacherStartTime=LocalDateTime.parse(dto.getStartTime());
-    LocalDateTime teacherEndTime=LocalDateTime.parse(dto.getEndTime());
+     Offering offering=offeringRepo.findById(sessionDto.getOffering()).orElseThrow(()->new InvalidOfferingIdException("invalid offering id :"+sessionDto.getOffering()));
+
+     Sessions session =new Sessions();
+;
+    LocalDateTime teacherStartTime=LocalDateTime.parse(sessionDto.getStartTime());
+    LocalDateTime teacherEndTime=LocalDateTime.parse(sessionDto.getEndTime());
     String timezone=user.getTimeZone();
      Instant startTime=teacherStartTime.atZone(ZoneId.of(timezone)).toInstant();
      Instant endTime=teacherEndTime.atZone(ZoneId.of(timezone)).toInstant();
      session.setStartTime(startTime);
      session.setEndTime(endTime);
+     session.setTeacherId(user);
+     session.setOffering(offering);
 
 
 
@@ -92,35 +95,34 @@ public class TeacherService {
          }
 
  }
- @Transactional
- public List<Integer> addListOfSessions( int id, String code,List<Sessions> sessionsList,TeacherSession dto){
-     Users user=userRepo.findById(id).orElseThrow(()->new InvalidUserException("user not found with id : "+id));
-     if(!(user.getPasscode().equals(code))){
-         throw new InvalidCodeException("invalid code : "+code);
-     }
-     for(Sessions s :sessionsList){
-
-         s.setEndTime(null);
-         s.setStartTime(null);
-         LocalDateTime teacherStartTime=LocalDateTime.parse(dto.getStartTime());
-         LocalDateTime teacherEndTime=LocalDateTime.parse(dto.getEndTime());
-         String timezone=user.getTimeZone();
-         Instant startTime=teacherStartTime.atZone(ZoneId.of(timezone)).toInstant();
-         Instant endTime=teacherEndTime.atZone(ZoneId.of(timezone)).toInstant();
-         s.setStartTime(startTime);
-         s.setEndTime(endTime);
-         List<Sessions> list =sessionRepo.findOverLappingSession(id,startTime,endTime);
-         if(!(list.isEmpty())) {
-             throw  new SessionAlreadyExistsException("Session already exists with times :"+teacherStartTime +"-"+teacherEndTime);
-         }
-
-     }
-
-     return sessionRepo.saveAll(sessionsList)
-             .stream()
-             .map(Sessions::getSessionId)
-             .toList();
- }
+// @Transactional
+// public List<Integer> addListOfSessions( int id, String code,List<RequestSessionListDto> sessionsList){
+//     Users user=userRepo.findById(id).orElseThrow(()->new InvalidUserException("user not found with id : "+id));
+//     if(!(user.getPasscode().equals(code))){
+//         throw new InvalidCodeException("invalid code : "+code);
+//     }
+//     List<Sessions> sessions=new ArrayList<>();
+//     for(RequestSessionListDto s :sessionsList){
+//
+//         String teacherStartTime=s.getStartTime();
+//         String teacherEndTime=s.getEndTime();
+//         String timezone=user.getTimeZone();
+//         Instant startTime=Instant.parse(teacherStartTime);
+//         Instant endTime=Instant.parse(teacherEndTime);
+//         s.setStartTime(startTime);
+//         s.setEndTime(endTime);
+//         List<Sessions> list =sessionRepo.findOverLappingSession(id,startTime,endTime);
+//         if(!(list.isEmpty())) {
+//             throw  new SessionAlreadyExistsException("Session already exists with times :"+teacherStartTime +"-"+teacherEndTime);
+//         }
+//
+//     }
+//
+//     return sessionRepo.saveAll(sessionsList)
+//             .stream()
+//             .map(Sessions::getSessionId)
+//             .toList();
+// }
 
 
  public List<SessionResponseDto> getallSessions(int id,String code){

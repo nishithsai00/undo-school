@@ -53,4 +53,10 @@ public class GlobalExceptionHandler {
         ErrorMessage error =new ErrorMessage(HttpStatus.CONFLICT.value(), e.getMessage(),System.currentTimeMillis());
         return new ResponseEntity<>(error,HttpStatus.CONFLICT);
     }
+    @ExceptionHandler(InvalidCourseIdException.class)
+    public ResponseEntity<ErrorMessage> courseEx(InvalidCourseIdException e){
+        ErrorMessage error =new ErrorMessage(HttpStatus.NOT_FOUND.value(), e.getMessage(),System.currentTimeMillis());
+        return new ResponseEntity<>(error,HttpStatus.NOT_FOUND);
+    }
+
 }
